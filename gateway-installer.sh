@@ -10,13 +10,17 @@ if ! ping -c 1 1.1.1.1 >/dev/null 2>&1; then
     exit 1
 fi
 
-
 # --- Step 1: Check/install PIA if missing ---
 echo "📦 Checking for PIA VPN client..."
 if ! command -v piactl >/dev/null; then
     echo "📥 PIA not found. Downloading and installing..."
-    curl -L -O "https://www.privateinternetaccess.com/installer/x/download_installer_linux"
-    PIA_INSTALLER=$(find . -maxdepth 1 -name 'pia-linux-*.run' | head -n 1)
+    wget -O pia-installer.run "https://installers.privateinternetaccess.com/download/pia-linux-3.6.1-08339.run"
+    if file pia-installer.run | grep -q 'HTML'; then
+        echo "❌ Failed to download the actual installer. Got HTML instead. Aborting."
+        cat pia-installer.run | head -20
+        exit 1
+    fi
+    PIA_INSTALLER="pia-installer.run"
     chmod +x "$PIA_INSTALLER"
     ./$PIA_INSTALLER --quiet
     if ! command -v piactl >/dev/null; then
