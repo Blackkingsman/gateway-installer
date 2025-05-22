@@ -13,14 +13,12 @@ fi
 # --- Step 1: Check/install PIA if missing ---
 echo "📦 Checking for PIA VPN client..."
 if ! command -v piactl >/dev/null; then
-    echo "📥 PIA not found. Downloading and installing..."
-    wget -O pia-installer.run "https://installers.privateinternetaccess.com/download/pia-linux-3.6.1-08339.run"
-    if file pia-installer.run | grep -q 'HTML'; then
-        echo "❌ Failed to download the actual installer. Got HTML instead. Aborting."
-        cat pia-installer.run | head -20
+    echo "📥 PIA not found. Installing from local repo copy..."
+    PIA_INSTALLER="pia-installer.run"
+    if [[ ! -f "$PIA_INSTALLER" ]]; then
+        echo "❌ Installer file $PIA_INSTALLER not found in current directory. Aborting."
         exit 1
     fi
-    PIA_INSTALLER="pia-installer.run"
     chmod +x "$PIA_INSTALLER"
     ./$PIA_INSTALLER --quiet
     if ! command -v piactl >/dev/null; then
