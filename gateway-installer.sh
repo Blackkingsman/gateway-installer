@@ -10,17 +10,12 @@ if ! ping -c 1 1.1.1.1 >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "🔎 Checking DNS resolution..."
-if ! dig +short www.privateinternetaccess.com >/dev/null 2>&1; then
-    echo "⚠️ DNS resolution failed. Temporarily setting fallback DNS..."
-    echo "nameserver 1.1.1.1" | sudo tee /etc/resolv.conf > /dev/null
-fi
 
 # --- Step 1: Check/install PIA if missing ---
 echo "📦 Checking for PIA VPN client..."
 if ! command -v piactl >/dev/null; then
     echo "📥 PIA not found. Downloading and installing..."
-    wget --content-disposition "https://www.privateinternetaccess.com/installer/x/download_installer_linux"
+    curl -L -O "https://www.privateinternetaccess.com/installer/x/download_installer_linux"
     PIA_INSTALLER=$(find . -maxdepth 1 -name 'pia-linux-*.run' | head -n 1)
     chmod +x "$PIA_INSTALLER"
     ./$PIA_INSTALLER --quiet
