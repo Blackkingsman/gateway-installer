@@ -5,6 +5,36 @@ set -e
 ARCH=$(uname -m)
 echo "🔍 System architecture: $ARCH"
 
+case "$1" in
+  --uninstall)
+    echo "🧹 Uninstalling PIA VPN Gateway setup..."
+    sudo systemctl stop pia-gateway.service || true
+    sudo systemctl disable pia-gateway.service || true
+    sudo rm -f /etc/systemd/system/pia-gateway.service
+    sudo rm -f /usr/local/bin/gateway-installer.sh
+
+    sudo systemctl stop pia-watchdog.service || true
+    sudo systemctl disable pia-watchdog.service || true
+    sudo rm -f /etc/systemd/system/pia-watchdog.service
+    sudo rm -f /usr/local/bin/pia-watchdog.sh
+
+    sudo iptables -F
+    sudo iptables -t nat -F
+    echo "" | sudo tee /etc/iptables/rules.v4 > /dev/null
+    echo "" | sudo tee /etc/iptables/rules.v6 > /dev/null
+
+    sudo rm -rf /etc/pia/hooks || true
+
+    sudo rm -rf /opt/piavpn || true
+    sudo rm -rf ~/.pia_manager || true
+    sudo rm -rf ~/.config/piavpn || true
+    sudo rm -f ~/.local/share/applications/piavpn.desktop || true
+
+    echo "✅ Uninstall complete. Reboot recommended."
+    exit 0
+    ;;
+esac
+
 case "$ARCH" in
     x86_64)
         PIA_INSTALLER="pia-installer.run"
@@ -18,8 +48,6 @@ case "$ARCH" in
         exit 1
         ;;
 esac
-
-echo "🔧 Starting PIA VPN Gateway Setup..."
 
 # --- Step 0: Check internet and DNS ---
 echo "🌐 Checking internet connectivity..."
@@ -164,10 +192,6 @@ EOF
 sudo chmod +x /usr/local/bin/pia-watchdog.sh
 
 # Create systemd service
-
-# Enable logging to journal
-sudo sed -i '/^ExecStart=/a StandardOutput=journal
-StandardError=journal' /etc/systemd/system/pia-watchdog.service
 cat <<EOF | sudo tee /etc/systemd/system/pia-watchdog.service > /dev/null
 [Unit]
 Description=PIA VPN Interface Watchdog
@@ -176,6 +200,8 @@ Wants=network-online.target
 
 [Service]
 ExecStart=/usr/local/bin/pia-watchdog.sh
+StandardOutput=journal
+StandardError=journal
 Restart=always
 RestartSec=10
 
@@ -190,3 +216,7 @@ echo "✅ All done!"
 echo "📄 To monitor the watchdog logs, run:"
 echo "   journalctl -fu pia-watchdog.service"
 echo "🔁 Reboot your machine to start routing traffic through the PIA VPN gateway."
+
+# Place setup logic here...
+
+# See canvas history for full original content.
