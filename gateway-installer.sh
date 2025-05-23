@@ -100,14 +100,14 @@ sudo iptables -t nat -F
 sudo iptables -F
 
 sudo iptables -t nat -A POSTROUTING -o "$VPN_IF" -j MASQUERADE
-sudo iptables -A FORWARD -i "$LAN_IF" -o "$VPN_IF" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
-sudo iptables -A FORWARD -i "$VPN_IF" -o "$LAN_IF" -m state --state ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A FORWARD -i "$LAN_IF" -o "$VPN_IF" -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A FORWARD -i "$VPN_IF" -o "$LAN_IF" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # --- Step 6: Save iptables rules ---
 echo "💾 Saving iptables rules..."
 echo "📦 Ensuring iptables-persistent is installed..."
 sudo apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent resolvconf
 sudo netfilter-persistent save
 
 # --- Step 7: Auto-run on boot (systemd) ---
@@ -132,33 +132,61 @@ sudo cp "$0" /usr/local/bin/pia-gateway.sh
 sudo chmod +x /usr/local/bin/pia-gateway.sh
 sudo systemctl enable pia-gateway.service
 
-# --- Step 8: Create PIA post-connect hook ---
-echo "🧩 Setting up post-connect hook for dynamic iptables refresh..."
+# --- Step 8: Set up watchdog service to monitor VPN connection ---
+echo "👁 Setting up VPN watchdog service..."
 
-sudo mkdir -p /etc/pia/hooks
-cat <<EOF | sudo tee /etc/pia/hooks/post-connect.sh > /dev/null
+cat <<'EOF' | sudo tee /usr/local/bin/pia-watchdog.sh > /dev/null
 #!/bin/bash
 
-VPN_IF=\$(ip -br link | awk '/tun[0-9]+/ {print \$1; exit}')
-LAN_IF=\$(ip route get 1 | awk '{print \$5; exit}')
+LAST_IF=""
+while true; do
+  VPN_IF=$(ip -br link | awk '/tun[0-9]+/ {print $1; exit}')
+  LAN_IF=$(ip route get 1 | awk '{print $5; exit}')
 
-if [[ -z "\$VPN_IF" || -z "\$LAN_IF" ]]; then
-  echo "❌ Could not detect interfaces. Aborting post-connect script."
-  exit 1
-fi
+  if [[ "$VPN_IF" != "$LAST_IF" && -n "$VPN_IF" && -n "$LAN_IF" ]]; then
+    echo "🔄 VPN interface changed to $VPN_IF. Reapplying iptables..."
 
-sudo iptables -t nat -F
-sudo iptables -F
+    iptables -t nat -F
+    iptables -F
+    iptables -t nat -A POSTROUTING -o "$VPN_IF" -j MASQUERADE
+    iptables -A FORWARD -i "$LAN_IF" -o "$VPN_IF" -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j ACCEPT
+    iptables -A FORWARD -i "$VPN_IF" -o "$LAN_IF" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-sudo iptables -t nat -A POSTROUTING -o "\$VPN_IF" -j MASQUERADE
-sudo iptables -A FORWARD -i "\$LAN_IF" -o "\$VPN_IF" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
-sudo iptables -A FORWARD -i "\$VPN_IF" -o "\$LAN_IF" -m state --state ESTABLISHED,RELATED -j ACCEPT
+    echo 'nameserver 1.1.1.1' > /etc/resolv.conf
 
-echo "✅ iptables rules reapplied after VPN connection."
+    LAST_IF="$VPN_IF"
+  fi
+
+  sleep 5
+done
 EOF
 
-sudo chmod +x /etc/pia/hooks/post-connect.sh
+sudo chmod +x /usr/local/bin/pia-watchdog.sh
+
+# Create systemd service
+
+# Enable logging to journal
+sudo sed -i '/^ExecStart=/a StandardOutput=journal
+StandardError=journal' /etc/systemd/system/pia-watchdog.service
+cat <<EOF | sudo tee /etc/systemd/system/pia-watchdog.service > /dev/null
+[Unit]
+Description=PIA VPN Interface Watchdog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/pia-watchdog.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl enable pia-watchdog.service
 
 echo ""
 echo "✅ All done!"
+echo "📄 To monitor the watchdog logs, run:"
+echo "   journalctl -fu pia-watchdog.service"
 echo "🔁 Reboot your machine to start routing traffic through the PIA VPN gateway."
