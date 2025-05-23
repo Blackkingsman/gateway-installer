@@ -132,6 +132,33 @@ sudo cp "$0" /usr/local/bin/pia-gateway.sh
 sudo chmod +x /usr/local/bin/pia-gateway.sh
 sudo systemctl enable pia-gateway.service
 
+# --- Step 8: Create PIA post-connect hook ---
+echo "🧩 Setting up post-connect hook for dynamic iptables refresh..."
+
+sudo mkdir -p /etc/pia/hooks
+cat <<EOF | sudo tee /etc/pia/hooks/post-connect.sh > /dev/null
+#!/bin/bash
+
+VPN_IF=\$(ip -br link | awk '/tun[0-9]+/ {print \$1; exit}')
+LAN_IF=\$(ip route get 1 | awk '{print \$5; exit}')
+
+if [[ -z "\$VPN_IF" || -z "\$LAN_IF" ]]; then
+  echo "❌ Could not detect interfaces. Aborting post-connect script."
+  exit 1
+fi
+
+sudo iptables -t nat -F
+sudo iptables -F
+
+sudo iptables -t nat -A POSTROUTING -o "\$VPN_IF" -j MASQUERADE
+sudo iptables -A FORWARD -i "\$LAN_IF" -o "\$VPN_IF" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A FORWARD -i "\$VPN_IF" -o "\$LAN_IF" -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+echo "✅ iptables rules reapplied after VPN connection."
+EOF
+
+sudo chmod +x /etc/pia/hooks/post-connect.sh
+
 echo ""
 echo "✅ All done!"
 echo "🔁 Reboot your machine to start routing traffic through the PIA VPN gateway."
