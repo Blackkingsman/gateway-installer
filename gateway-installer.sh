@@ -1,6 +1,24 @@
 #!/bin/bash
 set -e
 
+# --- Architecture check ---
+ARCH=$(uname -m)
+echo "🔍 System architecture: $ARCH"
+
+case "$ARCH" in
+    x86_64)
+        PIA_INSTALLER="pia-installer.run"
+        ;;
+    aarch64|armv7l)
+        PIA_INSTALLER="pia-installer-arm.run"
+        ;;
+    *)
+        echo "❌ Unsupported architecture: $ARCH"
+        echo "This script only supports x86_64 and ARM-based systems."
+        exit 1
+        ;;
+esac
+
 echo "🔧 Starting PIA VPN Gateway Setup..."
 
 # --- Step 0: Check internet and DNS ---
@@ -14,7 +32,6 @@ fi
 echo "📦 Checking for PIA VPN client..."
 if ! command -v piactl >/dev/null; then
     echo "📥 PIA not found. Installing from local repo copy..."
-    PIA_INSTALLER="pia-installer.run"
     if [[ ! -f "$PIA_INSTALLER" ]]; then
         echo "❌ Installer file $PIA_INSTALLER not found in current directory. Aborting."
         exit 1
