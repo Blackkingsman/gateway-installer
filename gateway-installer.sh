@@ -78,8 +78,8 @@ else
 fi
 
 # --- Step 3: Detect interfaces ---
-VPN_IF=$(ip route | grep -m1 "default.*tun" | awk '{print $5}')
-LAN_IF=$(ip route | grep -m1 "proto kernel" | grep -v "$VPN_IF" | awk '{print $3}' | xargs -I{} ip -br a | grep {} | awk '{print $1}')
+VPN_IF=$(ip -br link | awk '/tun[0-9]+/ {print $1; exit}')
+LAN_IF=$(ip route get 1 | awk '{print $5; exit}')
 
 if [[ -z "$VPN_IF" || -z "$LAN_IF" ]]; then
     echo "❌ Could not detect VPN or LAN interface. Aborting."
